@@ -1,6 +1,6 @@
 python-telegram-bot
 requests
-googletrans==4.0.0-rc1
+deep-translator
 schedule
 python-dotenv
 flask
