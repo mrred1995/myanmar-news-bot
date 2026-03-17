@@ -31,7 +31,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Bot is running!"
+    return "AI News Bot is running!"
 
 def run_flask():
     port = int(os.environ.get('PORT', 8080))
@@ -49,22 +49,22 @@ def translate_to_myanmar(text):
         logging.error(f"Translation error: {e}")
         return text
 
-def get_myanmar_news():
-    url = f"https://newsapi.org/v2/everything?q=Myanmar&sortBy=publishedAt&apiKey={NEWS_API_KEY}&language=en"
+def get_ai_news():
+    # Changed query from 'Myanmar' to 'Artificial Intelligence'
+    url = f"https://newsapi.org/v2/everything?q=Artificial Intelligence&sortBy=publishedAt&apiKey={NEWS_API_KEY}&language=en"
     try:
         response = requests.get(url)
         if response.status_code == 200:
-            return response.json().get('articles', [])[:5]  # Get top 5 news
+            return response.json().get('articles', [])[:5]  # Get top 5 AI news
     except Exception as e:
         logging.error(f"News API error: {e}")
     return []
 
 async def send_news_job(context: ContextTypes.DEFAULT_TYPE):
     chat_id = context.job.chat_id
-    news_articles = get_myanmar_news()
+    news_articles = get_ai_news()
     
     if not news_articles:
-        # Avoid sending "no news" message during scheduled jobs to reduce noise
         return
 
     for article in news_articles:
@@ -76,7 +76,7 @@ async def send_news_job(context: ContextTypes.DEFAULT_TYPE):
         mm_title = translate_to_myanmar(title)
         mm_desc = translate_to_myanmar(description)
         
-        message_text = f"📰 *{mm_title}*\n\n{mm_desc}\n\n🔗 [မူရင်းသတင်းဖတ်ရန်]({news_url})"
+        message_text = f"🤖 *AI သတင်း - {mm_title}*\n\n{mm_desc}\n\n🔗 [မူရင်းသတင်းဖတ်ရန်]({news_url})"
         
         keyboard = [[InlineKeyboardButton("သတင်းအပြည့်အစုံဖတ်ရန်", url=news_url)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -111,7 +111,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     await context.bot.send_message(
         chat_id=chat_id, 
-        text="မင်္ဂလာပါ။ မြန်မာနိုင်ငံသတင်းများကို နေ့စဉ် ၉ နာရီ၊ ၁၂ နာရီ နှင့် ညနေ ၅ နာရီတို့တွင် ပို့ပေးပါမည်။"
+        text="မင်္ဂလာပါ။ Artificial Intelligence (AI) ဆိုင်ရာ သတင်းများကို နေ့စဉ် ၉ နာရီ၊ ၁၂ နာရီ နှင့် ညနေ ၅ နာရီတို့တွင် ပို့ပေးပါမည်။"
     )
     
     # Add chat_id to persistence
@@ -123,15 +123,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Schedule news updates for this user
     schedule_jobs_for_chat(context.application, chat_id)
     
-    # Send news immediately for confirmation
-    news_articles = get_myanmar_news()
+    # Send latest AI news immediately for confirmation
+    news_articles = get_ai_news()
     if news_articles:
-        for article in news_articles[:1]: # Just send 1 for confirmation
+        for article in news_articles[:1]: 
             title = translate_to_myanmar(article["title"])
             news_url = article["url"]
             await context.bot.send_message(
                 chat_id=chat_id, 
-                text=f"စမ်းသပ်မှု အောင်မြင်ပါသည်။ လက်ရှိသတင်း - \n\n📰 *{title}*\n\n🔗 [မူရင်းသတင်းဖတ်ရန်]({news_url})",
+                text=f"AI သတင်းများ စတင်ပို့ဆောင်ပေးပါမည်။ လက်ရှိသတင်း - \n\n🤖 *{title}*\n\n🔗 [မူရင်းသတင်းဖတ်ရန်]({news_url})",
                 parse_mode='Markdown'
             )
 
@@ -144,16 +144,15 @@ def schedule_jobs_for_chat(application, chat_id):
     times = ["09:00", "12:00", "17:00"]
     for t_str in times:
         h, m = map(int, t_str.split(":"))
-        # Create a time object in Myanmar TZ
         job_time = dtime(hour=h, minute=m, tzinfo=MYANMAR_TZ)
         
         application.job_queue.run_daily(
             send_news_job, 
             time=job_time,
             chat_id=chat_id,
-            name=f"news_{chat_id}" # Group name for easier management
+            name=f"news_{chat_id}"
         )
-    logging.info(f"Scheduled jobs for chat_id: {chat_id}")
+    logging.info(f"Scheduled AI news jobs for chat_id: {chat_id}")
 
 if __name__ == '__main__':
     # Start Flask in a separate thread
@@ -172,5 +171,5 @@ if __name__ == '__main__':
     start_handler = CommandHandler('start', start)
     application.add_handler(start_handler)
     
-    logging.info("Bot is starting...")
+    logging.info("AI News Bot is starting...")
     application.run_polling()
