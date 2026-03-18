@@ -50,12 +50,11 @@ def translate_to_myanmar(text):
         return text
 
 def get_ai_news():
-    # Changed query from 'Myanmar' to 'Artificial Intelligence'
     url = f"https://newsapi.org/v2/everything?q=Artificial Intelligence&sortBy=publishedAt&apiKey={NEWS_API_KEY}&language=en"
     try:
         response = requests.get(url)
         if response.status_code == 200:
-            return response.json().get('articles', [])[:5]  # Get top 5 AI news
+            return response.json().get('articles', [])[:5]
     except Exception as e:
         logging.error(f"News API error: {e}")
     return []
@@ -72,7 +71,6 @@ async def send_news_job(context: ContextTypes.DEFAULT_TYPE):
         description = article["description"] or "No description available"
         news_url = article["url"]
         
-        # Translate title and description
         mm_title = translate_to_myanmar(title)
         mm_desc = translate_to_myanmar(description)
         
@@ -107,6 +105,30 @@ def save_chat_ids(chat_ids):
     except Exception as e:
         logging.error(f"Error saving chat IDs: {e}")
 
+def schedule_jobs_for_chat(application, chat_id):
+    # Use chat_id in the name to manage jobs per user
+    job_name_prefix = f"news_{chat_id}"
+    
+    # Remove existing jobs for this user to avoid duplicates
+    current_jobs = application.job_queue.get_jobs_by_name(job_name_prefix)
+    for job in current_jobs:
+        job.schedule_removal()
+
+    # Schedule at 9:00 AM, 12:00 PM, 5:00 PM Myanmar Time
+    times = ["09:00", "12:00", "17:00"]
+    for t_str in times:
+        h, m = map(int, t_str.split(":"))
+        # The python-telegram-bot job_queue handles timezone-aware time objects correctly
+        job_time = dtime(hour=h, minute=m, tzinfo=MYANMAR_TZ)
+        
+        application.job_queue.run_daily(
+            send_news_job, 
+            time=job_time,
+            chat_id=chat_id,
+            name=job_name_prefix
+        )
+    logging.info(f"Scheduled 3 daily AI news jobs for chat_id: {chat_id} (MMT)")
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     await context.bot.send_message(
@@ -114,48 +136,27 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text="မင်္ဂလာပါ။ Artificial Intelligence (AI) ဆိုင်ရာ သတင်းများကို နေ့စဉ် ၉ နာရီ၊ ၁၂ နာရီ နှင့် ညနေ ၅ နာရီတို့တွင် ပို့ပေးပါမည်။"
     )
     
-    # Add chat_id to persistence
     chat_ids = set(load_chat_ids())
     if chat_id not in chat_ids:
         chat_ids.add(chat_id)
         save_chat_ids(chat_ids)
 
-    # Schedule news updates for this user
     schedule_jobs_for_chat(context.application, chat_id)
     
-    # Send latest AI news immediately for confirmation
+    # Send one latest news immediately as confirmation
     news_articles = get_ai_news()
     if news_articles:
-        for article in news_articles[:1]: 
-            title = translate_to_myanmar(article["title"])
-            news_url = article["url"]
-            await context.bot.send_message(
-                chat_id=chat_id, 
-                text=f"AI သတင်းများ စတင်ပို့ဆောင်ပေးပါမည်။ လက်ရှိသတင်း - \n\n🤖 *{title}*\n\n🔗 [မူရင်းသတင်းဖတ်ရန်]({news_url})",
-                parse_mode='Markdown'
-            )
-
-def schedule_jobs_for_chat(application, chat_id):
-    # Clear existing jobs for this chat_id to prevent duplicates
-    current_jobs = application.job_queue.get_jobs_by_name(f"news_{chat_id}")
-    for job in current_jobs:
-        job.schedule_removal()
-
-    times = ["09:00", "12:00", "17:00"]
-    for t_str in times:
-        h, m = map(int, t_str.split(":"))
-        job_time = dtime(hour=h, minute=m, tzinfo=MYANMAR_TZ)
-        
-        application.job_queue.run_daily(
-            send_news_job, 
-            time=job_time,
-            chat_id=chat_id,
-            name=f"news_{chat_id}"
+        article = news_articles[0]
+        title = translate_to_myanmar(article["title"])
+        news_url = article["url"]
+        await context.bot.send_message(
+            chat_id=chat_id, 
+            text=f"AI သတင်းများ စတင်ပို့ဆောင်ပေးပါမည်။ လက်ရှိသတင်း - \n\n🤖 *{title}*\n\n🔗 [မူရင်းသတင်းဖတ်ရန်]({news_url})",
+            parse_mode='Markdown'
         )
-    logging.info(f"Scheduled AI news jobs for chat_id: {chat_id}")
 
 if __name__ == '__main__':
-    # Start Flask in a separate thread
+    # Start Flask for Render health check
     flask_thread = Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
@@ -163,13 +164,12 @@ if __name__ == '__main__':
     # Start Telegram Bot
     application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     
-    # Setup jobs for previously registered chat IDs
+    # Register previously saved users and their jobs
     chat_ids = load_chat_ids()
     for cid in chat_ids:
         schedule_jobs_for_chat(application, cid)
 
-    start_handler = CommandHandler('start', start)
-    application.add_handler(start_handler)
+    application.add_handler(CommandHandler('start', start))
     
-    logging.info("AI News Bot is starting...")
+    logging.info("AI News Bot is starting and ready to deliver news at 09:00, 12:00, 17:00 MMT.")
     application.run_polling()
